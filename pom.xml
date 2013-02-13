@@ -10,8 +10,13 @@
   		<version>1.8.1</version>
   	</dependency>
 <dependency>
+        <groupId>org.neo4j</groupId>
+        <artifactId>neo4j-lucene-index</artifactId>
+        <version>1.8.1</version>
+</dependency>
+<dependency>
 	<groupId>org.neo4j</groupId>
-	<artifactId>neo4j-lucene-index</artifactId>
+	<artifactId>neo4j-cypher</artifactId>
 	<version>1.8.1</version>
 </dependency>
   </dependencies>
