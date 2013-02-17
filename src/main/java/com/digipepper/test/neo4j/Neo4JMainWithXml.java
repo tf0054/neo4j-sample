@@ -76,9 +76,17 @@ public class Neo4JMainWithXml {
 					.getJSONObject("graph")).getJSONObject("edges")).getJSONArray("edge");
 
 			Edge_Timeline = mkTimeline(objEdges, "Edge");
-						
+
+			Node refNode = graphDb.getNodeById(0);
+			refNode.setProperty( "name", "REF" );
+
 			Node runNode = graphDb.createNode();
 			runNode.setProperty( "name", "RUN" );
+			refNode.createRelationshipTo(runNode, MyRelationshipTypes.HAS_RUN);
+
+			Node timelineNode = graphDb.createNode();
+			timelineNode.setProperty( "name", "TIMELINE" );
+			runNode.createRelationshipTo(timelineNode, MyRelationshipTypes.HAS_TIMELINE);
 
 			// Frameの作成
 			Node objNode1 = null, objNode2 = null;
@@ -87,23 +95,38 @@ public class Neo4JMainWithXml {
 
 			JSONObject objForNode = null;
 			Iterator<JSONObject> objIte = null;
-
-			System.out.println("END:"+longFrameEnd);
-			for(int i = 0; i < longFrameEnd; i++){
+			String[] aryDT = new String[4];
+			System.out.println("Total frames:"+longFrameEnd);
+			System.out.println("Creating frames...");
+			for(int i = 0; i <= longFrameEnd; i++){
 				objNode1 = graphDb.createNode();
 				objNode1.setProperty( "name", "FRAME_" + i );
-				objNode1.setProperty( "time", longSecStartTime+i*longSecDelta );
-				objNode1.setProperty( "strTime", getDateFromEpoch(longSecStartTime+i*longSecDelta));
+				objNode1.setProperty( "timestamp", longSecStartTime+i*longSecDelta );
+				objNode1.setProperty( "strTime", getDateFromEpochStr(longSecStartTime+i*longSecDelta));
 				test01idx.add(objNode1, "name", objNode1.getProperty("name"));
 				if(i == 0){
 					relationship = runNode.createRelationshipTo( objNode1, MyRelationshipTypes.RUN_FRAME_FIRST );
 				}else{
 					// make relations for frames.
-					objHits = test01idx.get("name", "FRAME_"+(i-1));
-					objNode2 = objHits.next();
-					relationship = objNode2.createRelationshipTo( objNode1, MyRelationshipTypes.FRAME_NEXT );
+					relationship = mkRelFromName(objNode1, MyRelationshipTypes.FRAME_NEXT, "FRAME_"+(i-1), test01idx);
 					relationship = runNode.createRelationshipTo( objNode1, MyRelationshipTypes.RUN_FRAME );
 				}
+				//
+				aryDT = getDateFromEpochAry(longSecStartTime+i*longSecDelta);
+				Node nodeYear = createOrGetNode(graphDb, test01idx, "TIMELINE_YEAR_"+aryDT[0], "year");
+				relationship = timelineNode.createRelationshipTo(nodeYear, MyRelationshipTypes.NEXT_LEVEL);
+				relationship.setProperty("year", Integer.parseInt(aryDT[0]));
+				Node nodeMonth = createOrGetNode(graphDb, test01idx, "TIMELINE_MONTH_"+aryDT[0]+aryDT[1], "month");
+				relationship = nodeYear.createRelationshipTo(nodeMonth, MyRelationshipTypes.NEXT_LEVEL);
+				relationship.setProperty("month", Integer.parseInt(aryDT[1]));
+				Node nodeDay = createOrGetNode(graphDb, test01idx, "TIMELINE_DAY_"+aryDT[0]+aryDT[1]+aryDT[2], "day");
+				relationship = nodeMonth.createRelationshipTo(nodeDay, MyRelationshipTypes.NEXT_LEVEL);
+				relationship.setProperty("day", Integer.parseInt(aryDT[2]));
+				Node nodeHour = createOrGetNode(graphDb, test01idx, "TIMELINE_HOUR_"+aryDT[0]+aryDT[1]+aryDT[2]+aryDT[3], "hour");
+				relationship = nodeDay.createRelationshipTo(nodeHour, MyRelationshipTypes.NEXT_LEVEL);
+				relationship.setProperty("hour", Integer.parseInt(aryDT[3]));
+				//
+				nodeHour.createRelationshipTo(objNode1, MyRelationshipTypes.TIMELINE_INSTANCE);
 			}
 			tx = txCommit(graphDb,tx);
 			int i = 0;
@@ -117,10 +140,8 @@ public class Neo4JMainWithXml {
 				test01idx.add(objNode1, "name", objNode1.getProperty("name"));
 				for(Long[] arySpells: Node_Timeline.get(objForNode.getString("@id"))){
 					for(Long longSpell: arySpells){
-							objHits = test01idx.get("name", "FRAME_"+longSpell);
-							objNode2 = objHits.next();
-							relationship = objNode1.createRelationshipTo( objNode2, MyRelationshipTypes.FRAME_TAG );
-							i++;
+						relationship = mkRelFromName(objNode1, MyRelationshipTypes.FRAME_TAG, "FRAME_"+longSpell, test01idx);
+						i++;
 					}
 				}
 			}
@@ -135,25 +156,18 @@ public class Neo4JMainWithXml {
 				objForNode = objIte.next();
 				objNode1 = graphDb.createNode();
 				objNode1.setProperty( "name", "EDGE_" + objForNode.getString("@source")+"-"+objForNode.getString("@target"));
+				objNode1.setProperty( "tag1", "TAG_" + objForNode.getString("@source"));
+				objNode1.setProperty( "tag2", "TAG_" + objForNode.getString("@target"));
 				test01idx.add(objNode1, "name", objNode1.getProperty("name"));
 				// make relations to nodes.
 				relationship = runNode.createRelationshipTo( objNode1, MyRelationshipTypes.RUN_EDGE );
-				relationship = mkRelFromName(objNode1, "TAG_"+objForNode.getString("@source"), test01idx);
-//				objHits = test01idx.get("name", "TAG_"+objForNode.getString("@source"));
-//				if(!objHits.hasNext()){
-//					objNode2 = objHits.next();
-//					relationship = objNode1.createRelationshipTo( objNode2, MyRelationshipTypes.EDGE_TAG );
-//				}
-				relationship = mkRelFromName(objNode1, "TAG_"+objForNode.getString("@target"), test01idx);
-//				objHits = test01idx.get("name", );
-//				if(!objHits.hasNext()){
-//					objNode2 = objHits.next();
-//					relationship = objNode1.createRelationshipTo( objNode2, MyRelationshipTypes.EDGE_TAG );
-//				}
+				relationship = mkRelFromName(objNode1, MyRelationshipTypes.EDGE_TAG, "TAG_"+objForNode.getString("@source"), test01idx);
+				relationship = mkRelFromName(objNode1, MyRelationshipTypes.EDGE_TAG, "TAG_"+objForNode.getString("@target"), test01idx);
 				for(Long[] arySpells: Edge_Timeline.get(objForNode.getString("@source")+"-"+objForNode.getString("@target"))){
 					for(Long longSpell: arySpells){
-							mkRelFromName(objNode1, "FRAME_"+longSpell, test01idx);
-							i++;
+						relationship = mkRelFromName(objNode1, MyRelationshipTypes.FRAME_EDGE, "FRAME_"+longSpell, test01idx);
+						relationship.setProperty("weight", Integer.parseInt(objForNode.getString("@weight")));
+						i++;
 					}
 				}
 			}
@@ -165,20 +179,36 @@ public class Neo4JMainWithXml {
 			tx.success();
 		} catch (Exception e) {
 			throw new RuntimeException(e);
-		} 
-		finally {
+		} finally {
 			tx.finish();
 			graphDb.shutdown(); // for safe closing.
 		}
 	}
 
-	private static Relationship mkRelFromName(Node objNode1, String a, Index<Node> test01idx) {
-		Node objNode2;
+	private static Node createOrGetNode(GraphDatabaseService graphDb,
+			Index<Node> test01idx, String a, String b) {
+		IndexHits<Node> objHits1;
+		objHits1 = test01idx.get("name", a);
+		if(objHits1.hasNext()){
+			return objHits1.next();
+		}else{
+			Node nodeYear = graphDb.createNode();
+			nodeYear.setProperty( "name", a);
+			nodeYear.setProperty( b, a);
+			return nodeYear;
+		}
+	}
+
+	private static Relationship mkRelFromName(Node objNode1, MyRelationshipTypes b, String a, Index<Node> test01idx) {
+		Node objNode2 = null;
 		IndexHits<Node> objHits;
 		//Relationship relationship;
 		objHits = test01idx.get("name", a);
-		objNode2 = objHits.next();
-		return objNode1.createRelationshipTo( objNode2, MyRelationshipTypes.FRAME_EDGE );
+		if(objHits.hasNext())
+			objNode2 = objHits.next();
+		else
+			System.out.println("cannot be found: "+a);
+		return objNode1.createRelationshipTo( objNode2, b);
 	}
 
 	private static HashMap<String, ArrayList<Long[]>> mkTimeline(JSONArray objNodes, String strType) {		
@@ -232,8 +262,8 @@ public class Neo4JMainWithXml {
 			longFrameEnd = longE;
 		
 		ArrayList<Long> aryTmp = new ArrayList<Long>();
-		aryTmp.add((long) 0);
-		while(longE > longS){
+		//aryTmp.add((long) 0);
+		while(longE >= longS){
 			aryTmp.add(longS++);	
 		}
 
@@ -248,35 +278,23 @@ public class Neo4JMainWithXml {
 		return dst;
 	}
 	
-	private static String readFileAsString(String filePath)
-			throws java.io.IOException {
-		byte[] buffer = new byte[(int) new File(filePath).length()];
-		BufferedInputStream f = null;
-		try {
-			f = new BufferedInputStream(new FileInputStream(filePath));
-			f.read(buffer);
-		} finally {
-			if (f != null)
-				try {
-					f.close();
-				} catch (IOException ignored) {
-				}
+	private static Transaction txCommit(GraphDatabaseService db, Transaction tx){
+	//        if ( i > 0 && i % 10000 == 0 ) {
+	            tx.success();
+	            tx.finish();
+	            tx = db.beginTx();
+	            return tx;
+	//        }
 		}
-		return new String(buffer);
-	}
-	
-	private static String getDateFromEpoch(long epochtime){
+
+	private static String getDateFromEpochStr(long epochtime){
 		SimpleDateFormat sdf = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss Z", Locale.US);
 		return sdf.format(new Date(epochtime*1000));
 	}
-	
-	private static Transaction txCommit(GraphDatabaseService db, Transaction tx){
-//        if ( i > 0 && i % 10000 == 0 ) {
-            tx.success();
-            tx.finish();
-            tx = db.beginTx();
-            return tx;
-//        }
+
+	private static String[] getDateFromEpochAry(long epochtime){
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy,MM,dd,HH", Locale.US);
+		return sdf.format(new Date(epochtime*1000)).split(",");
 	}
 
 	private static void dumpNodes(GraphDatabaseService graphDb) {
@@ -294,4 +312,21 @@ public class Neo4JMainWithXml {
 	        System.out.println(result);
 	
 		}
+
+	private static String readFileAsString(String filePath)
+			throws java.io.IOException {
+		byte[] buffer = new byte[(int) new File(filePath).length()];
+		BufferedInputStream f = null;
+		try {
+			f = new BufferedInputStream(new FileInputStream(filePath));
+			f.read(buffer);
+		} finally {
+			if (f != null)
+				try {
+					f.close();
+				} catch (IOException ignored) {
+				}
+		}
+		return new String(buffer);
+	}
 }
