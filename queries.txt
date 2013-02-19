@@ -1,0 +1,47 @@
+https://github.com/ccattuto/neo4j-dynagraph/wiki/Representing-time-dependent-graphs-in-Neo4j
+
+Q1
+START ref = node(0)
+MATCH ref-[:HAS_RUN]->run-[:HAS_TIMELINE]->()-[y:NEXT_LEVEL]->()-[m:NEXT_LEVEL]->()-[d:NEXT_LEVEL]->()-[h:NEXT_LEVEL]->()-[:TIMELINE_INSTANCE]->frame
+WHERE run.name="HT2009" and y.year=2009 and m.month=7 and d.day=1 and h.hour>=9 and h.hour<13
+RETURN frame ORDER BY frame.timestamp;
+
+Q2
+START frame = node(12820)
+MATCH frame-[:FRAME_TAG]-tag
+RETURN tag.name;
+
+Q3
+START frame = node(12820)
+MATCH frame-[r:FRAME_EDGE]-tag
+WHERE r.weight > 20 RETURN r.weight,tag.name;
+
+Q4 slow?
+START run = node(1)
+MATCH run-[:RUN_TAG]->tag<-[r:FRAME_TAG]-()
+RETURN tag.name, count(r);
+
+Q5 slow?
+START run = node(1)
+MATCH run-[:RUN_TAG]->tag<-[r:FRAME_TAG]-()
+WITH tag.name as name, COUNT(r) as freq
+WHERE freq > 1000
+RETURN name, freq ORDER BY freq DESC;
+
+Q6 slow?
+START tag = node(14146)
+MATCH ()-[d:NEXT_LEVEL]->()-[:NEXT_LEVEL]->()-[:TIMELINE_INSTANCE]-()-[:FRAME_TAG]-tag
+RETURN DISTINCT(d.day);
+
+Q7
+START tag1 = node(14146)
+MATCH tag1<-[:EDGE_TAG]-()-[:EDGE_TAG]->tag2
+RETURN tag2.name ORDER BY tag2.name
+
+Q8
+START tag1 = node(14146)
+MATCH tag1<-[:EDGE_TAG]-edge-[:EDGE_TAG]->tag2
+WITH edge, tag2
+MATCH ()-[d:NEXT_LEVEL]->()-[:NEXT_LEVEL]->()-[:TIMELINE_INSTANCE]-()-[:FRAME_EDGE]-edge
+WHERE d.day = 1
+RETURN DISTINCT(tag2.name);
