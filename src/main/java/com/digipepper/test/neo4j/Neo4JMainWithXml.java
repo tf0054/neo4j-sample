@@ -45,11 +45,11 @@ public class Neo4JMainWithXml {
 	
 	public static void main(String args[]) {
 		GraphDatabaseService graphDb = new EmbeddedGraphDatabase( "graphdb" );
-		IndexManager index = graphDb.index();
+		IndexManager indexMgr = graphDb.index();
 		
 		Transaction tx = graphDb.beginTx();
 		try {
-			Index<Node> test01idx = index.forNodes("test01index");
+			Index<Node> tags_HT2009 = indexMgr.forNodes("test01index");
 
 //			InputStream is = 
 //					Neo4JMainWithXml.class.getResourceAsStream("sample-xml.xml");
@@ -77,20 +77,21 @@ public class Neo4JMainWithXml {
 
 			Edge_Timeline = mkTimeline(objEdges, "Edge");
 
+			// making nodes
 			Node refNode = graphDb.getNodeById(0);
 			refNode.setProperty( "name", "REF" );
 
 			Node runNode = graphDb.createNode();
-			runNode.setProperty( "name", "RUN" );
+			//runNode.setProperty( "name", "RUN" );
+			runNode.setProperty( "name", "HT2009" );
 			refNode.createRelationshipTo(runNode, MyRelationshipTypes.HAS_RUN);
 
 			Node timelineNode = graphDb.createNode();
 			timelineNode.setProperty( "name", "TIMELINE" );
 			runNode.createRelationshipTo(timelineNode, MyRelationshipTypes.HAS_TIMELINE);
 
-			// Frameの作成
-			Node objNode1 = null, objNode2 = null;
-			IndexHits<Node> objHits = null;
+			// Frames
+			Node nodeTmp = null;
 			Relationship relationship = null;
 
 			JSONObject objForNode = null;
@@ -98,80 +99,82 @@ public class Neo4JMainWithXml {
 			String[] aryDT = new String[4];
 			System.out.println("Total frames:"+longFrameEnd);
 			System.out.println("Creating frames...");
+			Node nodeYear, nodeMonth, nodeDay, nodeHour;
 			for(int i = 0; i <= longFrameEnd; i++){
-				objNode1 = graphDb.createNode();
-				objNode1.setProperty( "name", "FRAME_" + i );
-				objNode1.setProperty( "timestamp", longSecStartTime+i*longSecDelta );
-				objNode1.setProperty( "strTime", getDateFromEpochStr(longSecStartTime+i*longSecDelta));
-				test01idx.add(objNode1, "name", objNode1.getProperty("name"));
+				nodeTmp = graphDb.createNode();
+				nodeTmp.setProperty( "name", "FRAME_" + i );
+				nodeTmp.setProperty( "type", "FRAME");
+				nodeTmp.setProperty( "timestamp", longSecStartTime+i*longSecDelta );
+				nodeTmp.setProperty( "timestamp_end", longSecStartTime+(i+1)*longSecDelta );
+				nodeTmp.setProperty( "time", getDateFromEpochStr(longSecStartTime+i*longSecDelta));
+				nodeTmp.setProperty( "frame_id", i );
+				nodeTmp.setProperty( "length", longSecDelta );
+				tags_HT2009.add(nodeTmp, "name", nodeTmp.getProperty("name"));
 				if(i == 0){
-					relationship = runNode.createRelationshipTo( objNode1, MyRelationshipTypes.RUN_FRAME_FIRST );
+					relationship = runNode.createRelationshipTo( nodeTmp, MyRelationshipTypes.RUN_FRAME_FIRST );
 				}else{
 					// make relations for frames.
-					relationship = mkRelFromName(objNode1, MyRelationshipTypes.FRAME_NEXT, "FRAME_"+(i-1), test01idx);
-					relationship = runNode.createRelationshipTo( objNode1, MyRelationshipTypes.RUN_FRAME );
+					relationship = mkRelFromName(nodeTmp, MyRelationshipTypes.FRAME_NEXT, "FRAME_"+(i-1), tags_HT2009, true);
+					relationship = runNode.createRelationshipTo( nodeTmp, MyRelationshipTypes.RUN_FRAME );
 				}
 				//
 				aryDT = getDateFromEpochAry(longSecStartTime+i*longSecDelta);
-				Node nodeYear = createOrGetNode(graphDb, test01idx, "TIMELINE_YEAR_"+aryDT[0], "year");
-				relationship = timelineNode.createRelationshipTo(nodeYear, MyRelationshipTypes.NEXT_LEVEL);
-				relationship.setProperty("year", Integer.parseInt(aryDT[0]));
-				Node nodeMonth = createOrGetNode(graphDb, test01idx, "TIMELINE_MONTH_"+aryDT[0]+aryDT[1], "month");
-				relationship = nodeYear.createRelationshipTo(nodeMonth, MyRelationshipTypes.NEXT_LEVEL);
-				relationship.setProperty("month", Integer.parseInt(aryDT[1]));
-				Node nodeDay = createOrGetNode(graphDb, test01idx, "TIMELINE_DAY_"+aryDT[0]+aryDT[1]+aryDT[2], "day");
-				relationship = nodeMonth.createRelationshipTo(nodeDay, MyRelationshipTypes.NEXT_LEVEL);
-				relationship.setProperty("day", Integer.parseInt(aryDT[2]));
-				Node nodeHour = createOrGetNode(graphDb, test01idx, "TIMELINE_HOUR_"+aryDT[0]+aryDT[1]+aryDT[2]+aryDT[3], "hour");
-				relationship = nodeDay.createRelationshipTo(nodeHour, MyRelationshipTypes.NEXT_LEVEL);
-				relationship.setProperty("hour", Integer.parseInt(aryDT[3]));
+				nodeYear = createOrGetNode(graphDb, tags_HT2009, timelineNode, "year", "",aryDT[0]);
+				nodeMonth = createOrGetNode(graphDb, tags_HT2009, nodeYear, "month",aryDT[0],aryDT[1]);
+				nodeDay = createOrGetNode(graphDb, tags_HT2009, nodeMonth,"day",aryDT[0]+aryDT[1],aryDT[2]);
+				nodeHour = createOrGetNode(graphDb, tags_HT2009, nodeDay,"hour",aryDT[0]+aryDT[1]+aryDT[2],aryDT[3]);
 				//
-				nodeHour.createRelationshipTo(objNode1, MyRelationshipTypes.TIMELINE_INSTANCE);
+				relationship = nodeHour.createRelationshipTo(nodeTmp, MyRelationshipTypes.TIMELINE_INSTANCE);
+				relationship.setProperty("timestamp", nodeTmp.getProperty("timestamp"));
 			}
 			tx = txCommit(graphDb,tx);
-			int i = 0;
+			
+			int j = 0;
 			System.out.println("Creating nodes...");				
 			objIte = objNodes.iterator();
 			while(objIte.hasNext()){
 				objForNode = objIte.next();
-				objNode1 = graphDb.createNode();
-				objNode1.setProperty( "name", "TAG_" + objForNode.getString("@id") );
-				relationship = runNode.createRelationshipTo( objNode1, MyRelationshipTypes.RUN_TAG );
-				test01idx.add(objNode1, "name", objNode1.getProperty("name"));
+				nodeTmp = graphDb.createNode();
+				nodeTmp.setProperty( "name", "TAG_" + objForNode.getString("@id") );
+				nodeTmp.setProperty( "label", objForNode.getString("@label") );
+				nodeTmp.setProperty( "type", "TAG");
+				relationship = runNode.createRelationshipTo( nodeTmp, MyRelationshipTypes.RUN_TAG );
+				tags_HT2009.add(nodeTmp, "name", nodeTmp.getProperty("name"));
 				for(Long[] arySpells: Node_Timeline.get(objForNode.getString("@id"))){
 					for(Long longSpell: arySpells){
-						relationship = mkRelFromName(objNode1, MyRelationshipTypes.FRAME_TAG, "FRAME_"+longSpell, test01idx);
-						i++;
+						relationship = mkRelFromName(nodeTmp, MyRelationshipTypes.FRAME_TAG, "FRAME_"+longSpell, tags_HT2009, false);
+						j++;
 					}
 				}
 			}
-			System.out.println("frame rels: "+i);
+			System.out.println("frame rels: "+j);
 			tx = txCommit(graphDb,tx);
 			
-			i = 0;
+			j = 0;
 			System.out.println("Creating edges...");				
 			objIte = objEdges.iterator();
 			while(objIte.hasNext()){
 				// make edges.
 				objForNode = objIte.next();
-				objNode1 = graphDb.createNode();
-				objNode1.setProperty( "name", "EDGE_" + objForNode.getString("@source")+"-"+objForNode.getString("@target"));
-				objNode1.setProperty( "tag1", "TAG_" + objForNode.getString("@source"));
-				objNode1.setProperty( "tag2", "TAG_" + objForNode.getString("@target"));
-				test01idx.add(objNode1, "name", objNode1.getProperty("name"));
+				nodeTmp = graphDb.createNode();
+				nodeTmp.setProperty( "name", "EDGE_" + objForNode.getString("@source")+"-"+objForNode.getString("@target"));
+				nodeTmp.setProperty( "type", "EDGE");
+				nodeTmp.setProperty( "tag1", "TAG_" + objForNode.getString("@source"));
+				nodeTmp.setProperty( "tag2", "TAG_" + objForNode.getString("@target"));
+				tags_HT2009.add(nodeTmp, "name", nodeTmp.getProperty("name"));
 				// make relations to nodes.
-				relationship = runNode.createRelationshipTo( objNode1, MyRelationshipTypes.RUN_EDGE );
-				relationship = mkRelFromName(objNode1, MyRelationshipTypes.EDGE_TAG, "TAG_"+objForNode.getString("@source"), test01idx);
-				relationship = mkRelFromName(objNode1, MyRelationshipTypes.EDGE_TAG, "TAG_"+objForNode.getString("@target"), test01idx);
+				relationship = runNode.createRelationshipTo( nodeTmp, MyRelationshipTypes.RUN_EDGE );
+				relationship = mkRelFromName(nodeTmp, MyRelationshipTypes.EDGE_TAG, "TAG_"+objForNode.getString("@source"), tags_HT2009, true);
+				relationship = mkRelFromName(nodeTmp, MyRelationshipTypes.EDGE_TAG, "TAG_"+objForNode.getString("@target"), tags_HT2009, true);
 				for(Long[] arySpells: Edge_Timeline.get(objForNode.getString("@source")+"-"+objForNode.getString("@target"))){
 					for(Long longSpell: arySpells){
-						relationship = mkRelFromName(objNode1, MyRelationshipTypes.FRAME_EDGE, "FRAME_"+longSpell, test01idx);
+						relationship = mkRelFromName(nodeTmp, MyRelationshipTypes.FRAME_EDGE, "FRAME_"+longSpell, tags_HT2009, false);
 						relationship.setProperty("weight", Integer.parseInt(objForNode.getString("@weight")));
-						i++;
+						j++;
 					}
 				}
 			}
-			System.out.println("frame rels: "+i);
+			System.out.println("frame rels: "+j);
 			tx = txCommit(graphDb,tx);
 			
 			System.out.println("Done.");				
@@ -186,29 +189,39 @@ public class Neo4JMainWithXml {
 	}
 
 	private static Node createOrGetNode(GraphDatabaseService graphDb,
-			Index<Node> test01idx, String a, String b) {
-		IndexHits<Node> objHits1;
-		objHits1 = test01idx.get("name", a);
-		if(objHits1.hasNext()){
-			return objHits1.next();
+			Index<Node> test01idx, Node nodeSource, String strProp, String a, String b) {
+		Node nodeTmp = null;
+		Relationship rel = null;
+		String strName = "TIMELINE_"+strProp.toUpperCase()+"_"+a+b;
+		IndexHits<Node> objHits = test01idx.get("name", strName);
+		
+		if(objHits.hasNext()){
+			return objHits.next();
 		}else{
-			Node nodeYear = graphDb.createNode();
-			nodeYear.setProperty( "name", a);
-			nodeYear.setProperty( b, a);
-			return nodeYear;
+			nodeTmp = graphDb.createNode();
+			nodeTmp.setProperty( "name", strName);
+			test01idx.add(nodeTmp, "name", strName);
+			rel = nodeSource.createRelationshipTo(nodeTmp, MyRelationshipTypes.NEXT_LEVEL);
+			rel.setProperty(strProp, Integer.parseInt(b));
+			return nodeTmp;
 		}
 	}
 
-	private static Relationship mkRelFromName(Node objNode1, MyRelationshipTypes b, String a, Index<Node> test01idx) {
-		Node objNode2 = null;
+	private static Relationship mkRelFromName(Node objNode, MyRelationshipTypes b, String a, Index<Node> test01idx, boolean d) {
+		// d is direction (from objNode or to objNode)
+		Node nodeTmp = null;
 		IndexHits<Node> objHits;
 		//Relationship relationship;
+		// a = a ^ b
 		objHits = test01idx.get("name", a);
 		if(objHits.hasNext())
-			objNode2 = objHits.next();
+			nodeTmp = objHits.next();
 		else
 			System.out.println("cannot be found: "+a);
-		return objNode1.createRelationshipTo( objNode2, b);
+		if(d)
+			return objNode.createRelationshipTo( nodeTmp, b);
+		else
+			return nodeTmp.createRelationshipTo( objNode, b);
 	}
 
 	private static HashMap<String, ArrayList<Long[]>> mkTimeline(JSONArray objNodes, String strType) {		
@@ -302,7 +315,7 @@ public class Neo4JMainWithXml {
 			Map<String, Object> props  = new HashMap<String, Object>();
 	        props .put( "name", "cypher" );
 	
-	//        Map<String, Object> params = new HashMap<String, Object>();
+	        //        Map<String, Object> params = new HashMap<String, Object>();
 	//        params.put( "props", props  );
 	
 	        ExecutionEngine engine = new ExecutionEngine(graphDb);
