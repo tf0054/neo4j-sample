@@ -4,7 +4,6 @@ import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -18,7 +17,8 @@ import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import net.sf.json.xml.XMLSerializer;
 
-import org.apache.commons.io.IOUtils;
+//import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.ArrayUtils;
 import org.neo4j.cypher.javacompat.ExecutionEngine;
 import org.neo4j.cypher.javacompat.ExecutionResult;
 import org.neo4j.graphdb.GraphDatabaseService;
@@ -29,14 +29,13 @@ import org.neo4j.graphdb.index.Index;
 import org.neo4j.graphdb.index.IndexHits;
 import org.neo4j.graphdb.index.IndexManager;
 import org.neo4j.kernel.EmbeddedGraphDatabase;
-import org.neo4j.tooling.GlobalGraphOperations;
 
 /**
  * @author tf0054
  * @see http://wiki.neo4j.org/content/Getting_Started_With_Java
  * @see http://stackoverflow.com/questions/14057897/how-to-explore-databases-created-by-an-embedded-neo4j-java-application-and-store
  */
-public class Neo4JMainWithXml {
+public class Load_gexf_to_neo4j {
 	
 	static Long longSecEnd = (long) 0;
 	static Long longFrameEnd = (long) 0;
@@ -51,21 +50,13 @@ public class Neo4JMainWithXml {
 		try {
 			Index<Node> tags_HT2009 = indexMgr.forNodes("test01index");
 
-//			InputStream is = 
-//					Neo4JMainWithXml.class.getResourceAsStream("sample-xml.xml");
-//				String xml = IOUtils.toString(is);
-			
 			String xml = readFileAsString("sample-xml.xml");
 			
 			XMLSerializer xmlSerializer = new XMLSerializer(); 
 			JSON json = xmlSerializer.read( xml );  
 						
-			HashMap<String, ArrayList<Long[]>> Node_Timeline = new HashMap<String, ArrayList<Long[]>>();
-			HashMap<String, ArrayList<Long[]>> Edge_Timeline = new HashMap<String, ArrayList<Long[]>>();
-
-			// *** TODO
-//			dumpNodes(graphDb);
-//			System.exit(0);
+			HashMap<String, ArrayList<long[]>> Node_Timeline = new HashMap<String, ArrayList<long[]>>();
+			HashMap<String, ArrayList<long[]>> Edge_Timeline = new HashMap<String, ArrayList<long[]>>();
 			
 			JSONArray objNodes = ( ( ((JSONObject) json)
 					.getJSONObject("graph")).getJSONObject("nodes")).getJSONArray("node");
@@ -94,19 +85,23 @@ public class Neo4JMainWithXml {
 			Node nodeTmp = null;
 			Relationship relationship = null;
 
+			Long a = null;
 			JSONObject objForNode = null;
 			Iterator<JSONObject> objIte = null;
 			String[] aryDT = new String[4];
 			System.out.println("Total frames:"+longFrameEnd);
+			
 			System.out.println("Creating frames...");
 			Node nodeYear, nodeMonth, nodeDay, nodeHour;
 			for(int i = 0; i <= longFrameEnd; i++){
+				a = longSecStartTime+i*longSecDelta;
 				nodeTmp = graphDb.createNode();
 				nodeTmp.setProperty( "name", "FRAME_" + i );
 				nodeTmp.setProperty( "type", "FRAME");
-				nodeTmp.setProperty( "timestamp", longSecStartTime+i*longSecDelta );
-				nodeTmp.setProperty( "timestamp_end", longSecStartTime+(i+1)*longSecDelta );
-				nodeTmp.setProperty( "time", getDateFromEpochStr(longSecStartTime+i*longSecDelta));
+				nodeTmp.setProperty( "timestamp", a);
+				//nodeTmp.setProperty( "timestamp_end", longSecStartTime+(i+1)*longSecDelta );
+				nodeTmp.setProperty( "timestamp_end", a+longSecDelta );
+				nodeTmp.setProperty( "time", getDateFromEpochStr(a));
 				nodeTmp.setProperty( "frame_id", i );
 				nodeTmp.setProperty( "length", longSecDelta );
 				tags_HT2009.add(nodeTmp, "name", nodeTmp.getProperty("name"));
@@ -117,12 +112,12 @@ public class Neo4JMainWithXml {
 					relationship = mkRelFromName(nodeTmp, MyRelationshipTypes.FRAME_NEXT, "FRAME_"+(i-1), tags_HT2009, true);
 					relationship = runNode.createRelationshipTo( nodeTmp, MyRelationshipTypes.RUN_FRAME );
 				}
-				//
-				aryDT = getDateFromEpochAry(longSecStartTime+i*longSecDelta);
-				nodeYear = createOrGetNode(graphDb, tags_HT2009, timelineNode, "year", "",aryDT[0]);
-				nodeMonth = createOrGetNode(graphDb, tags_HT2009, nodeYear, "month",aryDT[0],aryDT[1]);
-				nodeDay = createOrGetNode(graphDb, tags_HT2009, nodeMonth,"day",aryDT[0]+aryDT[1],aryDT[2]);
-				nodeHour = createOrGetNode(graphDb, tags_HT2009, nodeDay,"hour",aryDT[0]+aryDT[1]+aryDT[2],aryDT[3]);
+				// add_to_timeline()
+				aryDT = getDateFromEpochAry(a);
+				nodeYear = createOrGetNode(graphDb, tags_HT2009, timelineNode, "year", "", aryDT[0]);
+				nodeMonth = createOrGetNode(graphDb, tags_HT2009, nodeYear, "month", aryDT[0], aryDT[1]);
+				nodeDay = createOrGetNode(graphDb, tags_HT2009, nodeMonth,"day", aryDT[0]+aryDT[1], aryDT[2]);
+				nodeHour = createOrGetNode(graphDb, tags_HT2009, nodeDay,"hour", aryDT[0]+aryDT[1]+aryDT[2], aryDT[3]);
 				//
 				relationship = nodeHour.createRelationshipTo(nodeTmp, MyRelationshipTypes.TIMELINE_INSTANCE);
 				relationship.setProperty("timestamp", nodeTmp.getProperty("timestamp"));
@@ -140,14 +135,14 @@ public class Neo4JMainWithXml {
 				nodeTmp.setProperty( "type", "TAG");
 				relationship = runNode.createRelationshipTo( nodeTmp, MyRelationshipTypes.RUN_TAG );
 				tags_HT2009.add(nodeTmp, "name", nodeTmp.getProperty("name"));
-				for(Long[] arySpells: Node_Timeline.get(objForNode.getString("@id"))){
-					for(Long longSpell: arySpells){
+				for(long[] arySpells: Node_Timeline.get(objForNode.getString("@id"))){
+					for(long longSpell: arySpells){
 						relationship = mkRelFromName(nodeTmp, MyRelationshipTypes.FRAME_TAG, "FRAME_"+longSpell, tags_HT2009, false);
 						j++;
 					}
 				}
 			}
-			System.out.println("frame rels: "+j);
+			System.out.println("rels: "+j);
 			tx = txCommit(graphDb,tx);
 			
 			j = 0;
@@ -166,15 +161,15 @@ public class Neo4JMainWithXml {
 				relationship = runNode.createRelationshipTo( nodeTmp, MyRelationshipTypes.RUN_EDGE );
 				relationship = mkRelFromName(nodeTmp, MyRelationshipTypes.EDGE_TAG, "TAG_"+objForNode.getString("@source"), tags_HT2009, true);
 				relationship = mkRelFromName(nodeTmp, MyRelationshipTypes.EDGE_TAG, "TAG_"+objForNode.getString("@target"), tags_HT2009, true);
-				for(Long[] arySpells: Edge_Timeline.get(objForNode.getString("@source")+"-"+objForNode.getString("@target"))){
-					for(Long longSpell: arySpells){
+				for(long[] arySpells: Edge_Timeline.get(objForNode.getString("@source")+"-"+objForNode.getString("@target"))){
+					for(long longSpell: arySpells){
 						relationship = mkRelFromName(nodeTmp, MyRelationshipTypes.FRAME_EDGE, "FRAME_"+longSpell, tags_HT2009, false);
 						relationship.setProperty("weight", Integer.parseInt(objForNode.getString("@weight")));
 						j++;
 					}
 				}
 			}
-			System.out.println("frame rels: "+j);
+			System.out.println("rels: "+j);
 			tx = txCommit(graphDb,tx);
 			
 			System.out.println("Done.");				
@@ -186,6 +181,27 @@ public class Neo4JMainWithXml {
 			tx.finish();
 			graphDb.shutdown(); // for safe closing.
 		}
+	}
+
+	private static long[] get_intervals(long s, long e){
+		
+		// Where is my start frame?
+		long longS = (s - longSecStartTime) / longSecDelta;
+		long longE = (e - longSecStartTime) / longSecDelta;
+		
+		if(e > longSecEnd)
+			longSecEnd = e;
+	
+		if(longE > longFrameEnd)
+			longFrameEnd = longE;
+		
+		ArrayList<Long> aryTmp = new ArrayList<Long>();
+	
+		while(longE >= longS){
+			aryTmp.add(longS++);	
+		}
+	
+		return ArrayUtils.toPrimitive(aryTmp.toArray(new Long[0]));
 	}
 
 	private static Node createOrGetNode(GraphDatabaseService graphDb,
@@ -224,8 +240,8 @@ public class Neo4JMainWithXml {
 			return nodeTmp.createRelationshipTo( objNode, b);
 	}
 
-	private static HashMap<String, ArrayList<Long[]>> mkTimeline(JSONArray objNodes, String strType) {		
-		HashMap<String, ArrayList<Long[]>> Node_Timeline = new HashMap<String, ArrayList<Long[]>>();
+	private static HashMap<String, ArrayList<long[]>> mkTimeline(JSONArray objNodes, String strType) {		
+		HashMap<String, ArrayList<long[]>> Node_Timeline = new HashMap<String, ArrayList<long[]>>();
 
 		Iterator<JSONObject> objIte;
 		objIte = objNodes.iterator();
@@ -233,7 +249,7 @@ public class Neo4JMainWithXml {
 			JSONObject objNode = objIte.next();
 			JSONObject objSpells = objNode.getJSONObject("spells");
 
-			ArrayList<Long[]> aryFrameNos = new ArrayList<Long[]>();
+			ArrayList<long[]> aryFrameNos = new ArrayList<long[]>();
 
 			JSONArray aryTmp = null;
 			if(objSpells.get("spell") instanceof JSONArray){
@@ -243,9 +259,6 @@ public class Neo4JMainWithXml {
 				aryTmp.add(objSpells.getJSONObject("spell"));
 			}
 			
-			//Iterator<JSONObject> objIteIn = null;
-			//objIteIn = aryTmp.iterator();
-			//while(objIteIn.hasNext()){
 			for(Iterator<JSONObject> objIteIn = aryTmp.iterator(); objIteIn.hasNext();){				
 				JSONObject a = objIteIn.next();
 				aryFrameNos.add(get_intervals(a.getLong("@start"),a.getLong("@end")));
@@ -262,44 +275,6 @@ public class Neo4JMainWithXml {
 		return Node_Timeline;
 	}
 	
-	private static Long[] get_intervals(Long s, Long e){
-		
-		// 今のが何枚目からスタートか
-		Long longS = (s - longSecStartTime) / longSecDelta;
-		Long longE = (e - longSecStartTime) / longSecDelta;
-		
-		if(e > longSecEnd)
-			longSecEnd = e;
-
-		if(longE > longFrameEnd)
-			longFrameEnd = longE;
-		
-		ArrayList<Long> aryTmp = new ArrayList<Long>();
-		//aryTmp.add((long) 0);
-		while(longE >= longS){
-			aryTmp.add(longS++);	
-		}
-
-		// http://www.atmarkit.co.jp/bbs/phpBB/viewtopic.php?topic=16464&forum=12
-		int i = 0;
-		Long[] dst = new Long[aryTmp.size()];
-		Iterator<Long> iter = aryTmp.iterator();
-		while(iter.hasNext()){
-			dst[i++] = iter.next().longValue();
-		} 
-		//return (Long[]) aryTmp.toArray(Long);
-		return dst;
-	}
-	
-	private static Transaction txCommit(GraphDatabaseService db, Transaction tx){
-	//        if ( i > 0 && i % 10000 == 0 ) {
-	            tx.success();
-	            tx.finish();
-	            tx = db.beginTx();
-	            return tx;
-	//        }
-		}
-
 	private static String getDateFromEpochStr(long epochtime){
 		SimpleDateFormat sdf = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss Z", Locale.US);
 		return sdf.format(new Date(epochtime*1000));
@@ -310,16 +285,21 @@ public class Neo4JMainWithXml {
 		return sdf.format(new Date(epochtime*1000)).split(",");
 	}
 
+	private static Transaction txCommit(GraphDatabaseService db, Transaction tx){
+	    tx.success();
+	    tx.finish();
+	    tx = db.beginTx();
+	    return tx;
+	}
+
 	private static void dumpNodes(GraphDatabaseService graphDb) {
-	
 			Map<String, Object> props  = new HashMap<String, Object>();
 	        props .put( "name", "cypher" );
 	
-	        //        Map<String, Object> params = new HashMap<String, Object>();
-	//        params.put( "props", props  );
+	        // Map<String, Object> params = new HashMap<String, Object>();
+	        // params.put( "props", props  );
 	
 	        ExecutionEngine engine = new ExecutionEngine(graphDb);
-	        //ExecutionResult result = engine.execute( "START root=node(1190,1192,1192,1193) RETURN root");
 	        //ExecutionResult result = engine.execute( "START root=node(1190,1192,1192,1193) RETURN root");
 	        ExecutionResult result = engine.execute( "START root=node(*) MATCH (root)-[r]->()RETURN r,root");
 	        System.out.println(result);
