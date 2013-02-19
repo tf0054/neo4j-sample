@@ -50,7 +50,7 @@ public class Load_gexf_to_neo4j {
 		try {
 			Index<Node> tags_HT2009 = indexMgr.forNodes("test01index");
 
-			String xml = readFileAsString("sample-xml.xml");
+			String xml = readFileAsString("ht2009_20sec.gexf");
 			
 			XMLSerializer xmlSerializer = new XMLSerializer(); 
 			JSON json = xmlSerializer.read( xml );  
